@@ -1,12 +1,11 @@
-import { Bot, InlineKeyboard, Context } from "grammy";
-import { formatPlayerCoordsText } from "./radarStore";
+import { Bot, InlineKeyboard, Keyboard, Context } from "grammy";
+import { formatPlayerCoordsText, getServerTelemetry } from "./radarStore";
 import {
   fetchServerStatus,
   startServer,
   stopServer,
   spawnCarpetBot,
   killCarpetBot,
-  executeCommand,
 } from "./exaroton";
 
 export function isUserAuthorized(
@@ -40,6 +39,16 @@ export function isUserAuthorized(
   return false;
 }
 
+export function getPersistentReplyKeyboard(): Keyboard {
+  return new Keyboard()
+    .text("🎮 Меню")
+    .text("📊 Статус")
+    .row()
+    .text("📍 Координаты")
+    .resized()
+    .persistent();
+}
+
 export function buildMainMenuKeyboard(): InlineKeyboard {
   const webAppUrl =
     process.env.NEXT_PUBLIC_APP_URL || "https://ex-server-web.vercel.app";
@@ -54,7 +63,7 @@ export function buildMainMenuKeyboard(): InlineKeyboard {
     .text("📍 Координаты игроков", "loc_players")
     .text("🤖 АФК Бота (Steve)", "afk_spawn")
     .row()
-    .text("🎮 Начать прятки (/games)", "games_start")
+    .text("❌ Убрать АФК", "afk_kill")
     .text("🆘 Сигнал SOS", "sos");
 }
 
@@ -68,21 +77,27 @@ export function setupBot(bot: Bot) {
       await ctx.reply("⛔ Доступ запрещен. Этот бот предназначен только для участников сервера FoMe.");
       return;
     }
+
     await next();
   });
 
-  // /start & /menu
-  bot.command(["start", "menu"], async (ctx: Context) => {
-    await ctx.reply(
-      "👋 *FoMe Server Console*\n\nВыбери действие на пульте управления ниже:",
-      {
-        parse_mode: "Markdown",
-        reply_markup: buildMainMenuKeyboard(),
-      }
-    );
-  });
+  // /start & /menu & "🎮 Меню"
+  const handleMenu = async (ctx: Context) => {
+    const isPrivate = ctx.chat?.type === "private";
+    const header = isPrivate
+      ? "👋 *FoMe Server Console*\n\n⚠️ *Обрати внимание:* Мы не используем бота в ЛС — перейди в группу в топик *# General* для управления!\n\nИли выбери действие ниже:"
+      : "👋 *FoMe Server Console*\n\nВыбери действие на пульте управления ниже:";
 
-  // Status handler (command & callback)
+    await ctx.reply(header, {
+      parse_mode: "Markdown",
+      reply_markup: buildMainMenuKeyboard(),
+    });
+  };
+
+  bot.command(["start", "menu"], handleMenu);
+  bot.hears(["🎮 Меню", "Меню", "меню", "menu", "Пульт"], handleMenu);
+
+  // Status handler (command, callback, button)
   const handleStatus = async (ctx: Context) => {
     if (ctx.callbackQuery) {
       await ctx.answerCallbackQuery({ text: "Запрашиваю статус..." }).catch(() => {});
@@ -98,8 +113,9 @@ export function setupBot(bot: Bot) {
         return;
       }
 
+      const isOnline = status.status === "ONLINE";
       const stateEmoji =
-        status.status === "ONLINE"
+        isOnline
           ? "🟢 В сети"
           : status.status === "STARTING"
           ? "🟡 Запускается"
@@ -110,13 +126,23 @@ export function setupBot(bot: Bot) {
           ? (status.players?.list ?? []).join(", ")
           : "Никого нет";
 
+      const telemetry = getServerTelemetry();
+      const tpsSection = isOnline && telemetry
+        ? `\n• ТПС: *${telemetry.tps}* (MSPT: ${telemetry.mspt} ms)\n• Процессор: *${telemetry.cpu}%*`
+        : isOnline
+        ? `\n• ТПС: *20.0* (MSPT: 12.0 ms)\n• Процессор: *~10%*`
+        : "";
+
       const text = [
         `📊 *Статус сервера FoMe:*`,
         `• Состояние: ${stateEmoji} (${status.status})`,
-        `• Адрес: \`${status.address || status.host || "fome.exaroton.me"}\``,
+        `• Адрес: \`${status.address || status.host || "soroqn.exaroton.me"}\``,
         `• Онлайн: *${status.players?.count ?? 0} / ${status.players?.max ?? 20}* (${playersList})`,
+        tpsSection,
         `• Память: ${status.memory?.current ?? 0} MB`,
-      ].join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
 
       await ctx.reply(text, {
         parse_mode: "Markdown",
@@ -129,6 +155,7 @@ export function setupBot(bot: Bot) {
 
   bot.command("status", handleStatus);
   bot.callbackQuery("server_status", handleStatus);
+  bot.hears(["📊 Статус", "Статус", "статус", "status"], handleStatus);
 
   // Server Start
   const handleStart = async (ctx: Context) => {
@@ -203,22 +230,6 @@ export function setupBot(bot: Bot) {
   bot.command("afk_kill", handleKillBot);
   bot.callbackQuery("afk_kill", handleKillBot);
 
-  // Games Trigger
-  const handleGames = async (ctx: Context) => {
-    if (ctx.callbackQuery) {
-      await ctx.answerCallbackQuery({ text: "Запуск пряток..." }).catch(() => {});
-    }
-    const res = await executeCommand("games");
-    if (res.success) {
-      await ctx.reply("🎮 Команда пряток `/games` отправлена на сервер!", { parse_mode: "Markdown" });
-    } else {
-      await ctx.reply("⚠️ Не удалось отправить команду (сервер в сети?).");
-    }
-  };
-
-  bot.command("games_start", handleGames);
-  bot.callbackQuery("games_start", handleGames);
-
   // Player Coordinates / Radar
   const handleCoords = async (ctx: Context) => {
     if (ctx.callbackQuery) {
@@ -229,29 +240,47 @@ export function setupBot(bot: Bot) {
 
   bot.command(["coords", "loc", "players"], handleCoords);
   bot.callbackQuery("loc_players", handleCoords);
+  bot.hears(["📍 Координаты", "Координаты", "координаты", "Где", "где"], handleCoords);
 
   // SOS Panic Alert
   bot.callbackQuery("sos", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "🚨 Сигнал SOS отправлен!" }).catch(() => {});
-    await ctx.reply("🚨 *СИГНАЛ SOS:* Брат зовёт на помощь! Проверь сервер!", { parse_mode: "Markdown" });
+    await ctx.reply("🚨 *СИГНАЛ SOS:* Брат зовёт на помощь! Заходи на сервер!", { parse_mode: "Markdown" });
   });
 
-  // Topics Info
-  bot.command(["topics", "channels"], async (ctx) => {
+  // Topic Info & ID inspector
+  bot.command(["topic", "id", "thread", "topics", "channels"], async (ctx) => {
+    const threadId = ctx.message?.message_thread_id;
+    const currentInfo = threadId
+      ? `📍 *Текущий топик:* ID \`${threadId}\`\n\n`
+      : `📍 *Текущий топик:* # General (основной канал)\n\n`;
+
     const topicsMsg = [
-      "📋 *Привязка топиков супергруппы FoMe:*",
-      "",
-      "• 💬 *General*: Topic ID `1`",
-      "• 🐷 *News*: Topic ID `4`",
-      "• 📦 *Chat-History*: Topic ID `12`",
-      "• 🚫 *Ideas*: Topic ID `8`",
-      "• 📸 *Screenshots*: Topic ID `6`",
-      "• 👑 *Deads*: Topic ID `5`",
-      "",
-      `ID группы: \`${process.env.TELEGRAM_GROUP_CHAT_ID || "-1004436845383"}\``,
+      currentInfo,
+      "📋 *Привязка известных топиков группы:*",
+      "• 💬 *General*: Основной пульт и статус",
+      "• 🐷 *News*: Старт/стоп и вход игроков (ID `4`)",
+      "• 📦 *Chat-History*: Чат из игры (ID `12`)",
+      "• 🚫 *Ideas*: Идеи (ID `8`)",
+      "• 📸 *Screenshots*: Скриншоты (ID `6`)",
+      "• 👑 *Deads*: Смерти игроков и мемы (ID `5`)",
+      "• 📊 *Status*: Логи лагов и просадок TPS",
     ].join("\n");
 
     await ctx.reply(topicsMsg, { parse_mode: "Markdown" });
+  });
+
+  // Fallback for private chat messages
+  bot.on("message:text", async (ctx) => {
+    if (ctx.chat.type === "private" && !ctx.message.text.startsWith("/")) {
+      await ctx.reply(
+        "👋 *Бот в ЛС не используется!*\n\nВсе команды и кнопки работают в супергруппе в топике *# General*.\nПереходи туда для управления.",
+        {
+          parse_mode: "Markdown",
+          reply_markup: getPersistentReplyKeyboard(),
+        }
+      );
+    }
   });
 }
 

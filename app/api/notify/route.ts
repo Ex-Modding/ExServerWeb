@@ -5,10 +5,13 @@ import { InlineKeyboard } from "grammy";
 export const dynamic = "force-dynamic";
 
 interface NotifyPayload {
-  event: "server_started" | "server_stopping" | string;
+  event: "server_started" | "server_stopping" | "tps_drop" | string;
   secret?: string;
   message?: string;
   topicId?: number;
+  tps?: number;
+  mspt?: number;
+  players?: number;
 }
 
 export async function POST(req: Request) {
@@ -30,10 +33,11 @@ export async function POST(req: Request) {
     const botUsername = "fdihjdfhjfdjhfdjh_bot";
 
     const keyboard = new InlineKeyboard()
-      .url("🗺️ 3D Карта мира", webAppUrl)
+      .url("🗺️ 3D Карта / Радар", webAppUrl)
       .url("🎮 Пульт в ЛС", `https://t.me/${botUsername}`);
 
     let notificationText = "";
+    let targetThreadId: number | undefined = undefined;
 
     if (body.event === "server_started") {
       notificationText = [
@@ -42,19 +46,29 @@ export async function POST(req: Request) {
         "• Адрес: `soroqn.exaroton.me`",
         "• Мир полностью загружен, заходите!",
       ].join("\n");
+      // Send start to General (undefined) and News (4)
     } else if (body.event === "server_stopping") {
       notificationText = "🛑 *Сервер останавливается...* Сохранение мира.";
+    } else if (body.event === "tps_drop") {
+      notificationText = [
+        "⚠️ *ВНИМАНИЕ: ПРОСАДКА ПРОИЗВОДИТЕЛЬНОСТИ / TPS!*",
+        "",
+        `• Текущий TPS: *${body.tps ?? "низкий"}* (норма: 20.0)`,
+        `• Время тика (MSPT): *${body.mspt ?? ">50"} ms*`,
+        `• Игроков онлайн: *${body.players ?? 0}*`,
+        "",
+        "ℹ️ _Возможные причины: скопление сотен мобов, перегруженные воронки/редстоун-схемы или активная генерация новых чанков._",
+      ].join("\n");
+      targetThreadId = process.env.TELEGRAM_TOPIC_STATUS ? Number(process.env.TELEGRAM_TOPIC_STATUS) : undefined;
     } else {
       notificationText = body.message || `ℹ️ Оповещение от сервера: ${body.event}`;
+      targetThreadId = body.topicId;
     }
 
-    // Determine thread ID: News topic (4) or General (undefined)
-    const rawTopic = body.topicId ?? (process.env.TELEGRAM_NOTIFY_TOPIC ? Number(process.env.TELEGRAM_NOTIFY_TOPIC) : undefined);
-    const threadId = rawTopic && rawTopic !== 1 ? rawTopic : undefined;
-
+    // Send primary notification
     try {
       await bot.api.sendMessage(groupChatId, notificationText, {
-        message_thread_id: threadId,
+        message_thread_id: targetThreadId,
         parse_mode: "Markdown",
         reply_markup: keyboard,
       });
@@ -64,6 +78,19 @@ export async function POST(req: Request) {
         parse_mode: "Markdown",
         reply_markup: keyboard,
       });
+    }
+
+    // If server_started or server_stopping, duplicate to News topic (4)
+    if (body.event === "server_started" || body.event === "server_stopping") {
+      try {
+        await bot.api.sendMessage(groupChatId, notificationText, {
+          message_thread_id: 4, // News topic
+          parse_mode: "Markdown",
+          reply_markup: keyboard,
+        });
+      } catch {
+        // Ignore if news topic is unreachable
+      }
     }
 
     return NextResponse.json({ ok: true, delivered: true });

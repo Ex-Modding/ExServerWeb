@@ -5,6 +5,9 @@ export const dynamic = "force-dynamic";
 
 interface RadarIncomingPayload {
   secret?: string;
+  tps?: number;
+  mspt?: number;
+  cpu?: number;
   players?: Array<{
     name: string;
     x: number;
@@ -37,7 +40,11 @@ export async function POST(req: Request) {
     }
 
     const incoming = Array.isArray(body.players) ? body.players : [];
-    updateRadarPlayers(incoming);
+    updateRadarPlayers(incoming, {
+      tps: body.tps,
+      mspt: body.mspt,
+      cpu: body.cpu,
+    });
 
     return NextResponse.json({
       ok: true,

@@ -20,18 +20,35 @@ export interface PlayerTrailData {
   currentLocation?: { x: number; y: number; z: number; dimension: string };
 }
 
+export interface ServerTelemetry {
+  tps: number;
+  mspt: number;
+  cpu: number;
+  updatedAt: number;
+}
+
 // Global in-memory cache across serverless warm invocations
 declare global {
   // eslint-disable-next-line no-var
   var __fome_radar_players: Map<string, PlayerRadarData> | undefined;
   // eslint-disable-next-line no-var
   var __fome_radar_trails: Map<string, RadarBreadcrumb[]> | undefined;
+  // eslint-disable-next-line no-var
+  var __fome_server_telemetry: ServerTelemetry | undefined;
 }
 
 const playersMap = globalThis.__fome_radar_players ?? new Map<string, PlayerRadarData>();
 const trailsMap = globalThis.__fome_radar_trails ?? new Map<string, RadarBreadcrumb[]>();
+let telemetryData: ServerTelemetry = globalThis.__fome_server_telemetry ?? {
+  tps: 20.0,
+  mspt: 0,
+  cpu: 0,
+  updatedAt: 0,
+};
+
 globalThis.__fome_radar_players = playersMap;
 globalThis.__fome_radar_trails = trailsMap;
+globalThis.__fome_server_telemetry = telemetryData;
 
 const PLAYER_COLORS: Record<string, string> = {
   soroqn: "#06b6d4", // Cyan
@@ -46,8 +63,29 @@ function getPlayerColor(name: string): string {
   return "#a855f7"; // Default purple
 }
 
+export function updateRadarTelemetry(tps?: number, mspt?: number, cpu?: number) {
+  if (tps !== undefined || mspt !== undefined || cpu !== undefined) {
+    telemetryData = {
+      tps: tps !== undefined ? Number(tps.toFixed(1)) : telemetryData.tps,
+      mspt: mspt !== undefined ? Number(mspt.toFixed(1)) : telemetryData.mspt,
+      cpu: cpu !== undefined ? Math.round(cpu) : telemetryData.cpu,
+      updatedAt: Date.now(),
+    };
+    globalThis.__fome_server_telemetry = telemetryData;
+  }
+}
+
+export function getServerTelemetry(): ServerTelemetry | null {
+  // If telemetry is older than 45s, consider it stale
+  if (Date.now() - telemetryData.updatedAt > 45_000) {
+    return null;
+  }
+  return telemetryData;
+}
+
 export function updateRadarPlayers(
-  incoming: Array<{ name: string; x: number; y: number; z: number; dimension: string }>
+  incoming: Array<{ name: string; x: number; y: number; z: number; dimension: string }>,
+  metrics?: { tps?: number; mspt?: number; cpu?: number }
 ) {
   const now = Date.now();
   const currentNames = new Set(incoming.map((p) => p.name));
@@ -78,6 +116,10 @@ export function updateRadarPlayers(
     }
     trailsMap.set(p.name, trail);
   }
+
+  if (metrics) {
+    updateRadarTelemetry(metrics.tps, metrics.mspt, metrics.cpu);
+  }
 }
 
 export function getRadarState() {
@@ -92,6 +134,7 @@ export function getRadarState() {
   return {
     players,
     trails,
+    telemetry: getServerTelemetry(),
     count: players.length,
     updatedAt: players.length > 0 ? Math.max(...players.map((p) => p.updatedAt)) : null,
   };
