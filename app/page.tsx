@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import StatusHeader from "@/components/StatusHeader";
+import RadarView from "@/components/RadarView";
 import BlueMapView from "@/components/BlueMapView";
 import TelegramMiniAppInit from "@/components/TelegramMiniAppInit";
 
@@ -21,10 +22,12 @@ export default function Home() {
   const [serverState, setServerState] = useState<ServerState>({
     online: false,
     statusText: "offline",
-    address: "fome.exaroton.me",
+    address: "soroqn.exaroton.me",
     players: { count: 0, max: 20, list: [] },
     bluemapUrl: process.env.NEXT_PUBLIC_BLUEMAP_URL || "",
   });
+
+  const [viewMode, setViewMode] = useState<"radar" | "bluemap">("radar");
 
   const fetchStatus = async () => {
     try {
@@ -59,11 +62,37 @@ export default function Home() {
         playerList={serverState.players.list}
       />
 
-      {/* Main 3D BlueMap / Fallback Viewport */}
-      <BlueMapView
-        bluemapUrl={serverState.bluemapUrl}
-        isOnline={serverState.online}
-      />
+      {/* Main Tactical Radar or BlueMap Viewport */}
+      {viewMode === "bluemap" && serverState.bluemapUrl ? (
+        <BlueMapView
+          bluemapUrl={serverState.bluemapUrl}
+          isOnline={serverState.online}
+        />
+      ) : (
+        <RadarView isOnline={serverState.online} />
+      )}
+
+      {/* Optional Mode Switcher if BlueMap URL exists */}
+      {serverState.bluemapUrl && (
+        <div className="absolute top-20 left-6 z-20 flex items-center gap-1 bg-slate-900/90 border border-slate-800 p-1 rounded-xl shadow-lg">
+          <button
+            onClick={() => setViewMode("radar")}
+            className={`px-3 py-1 text-xs rounded-lg transition-all ${
+              viewMode === "radar" ? "bg-cyan-500 text-white" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Радар 2D
+          </button>
+          <button
+            onClick={() => setViewMode("bluemap")}
+            className={`px-3 py-1 text-xs rounded-lg transition-all ${
+              viewMode === "bluemap" ? "bg-cyan-500 text-white" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            3D BlueMap
+          </button>
+        </div>
+      )}
     </main>
   );
 }

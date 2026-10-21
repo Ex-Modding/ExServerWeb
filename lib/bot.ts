@@ -1,4 +1,5 @@
 import { Bot, InlineKeyboard, Context } from "grammy";
+import { formatPlayerCoordsText } from "./radarStore";
 import {
   fetchServerStatus,
   startServer,
@@ -48,10 +49,10 @@ export function buildMainMenuKeyboard(): InlineKeyboard {
     .text("🔴 Выключить сервер", "server_stop")
     .row()
     .text("📊 Статус сервера", "server_status")
-    .url("🗺️ Открыть 3D Карту", webAppUrl)
+    .url("🗺️ 3D Карту / Радар", webAppUrl)
     .row()
+    .text("📍 Координаты игроков", "loc_players")
     .text("🤖 АФК Бота (Steve)", "afk_spawn")
-    .text("❌ Убрать АФК", "afk_kill")
     .row()
     .text("🎮 Начать прятки (/games)", "games_start")
     .text("🆘 Сигнал SOS", "sos");
@@ -217,6 +218,17 @@ export function setupBot(bot: Bot) {
 
   bot.command("games_start", handleGames);
   bot.callbackQuery("games_start", handleGames);
+
+  // Player Coordinates / Radar
+  const handleCoords = async (ctx: Context) => {
+    if (ctx.callbackQuery) {
+      await ctx.answerCallbackQuery({ text: "Запрашиваю координаты..." }).catch(() => {});
+    }
+    await ctx.reply(formatPlayerCoordsText(), { parse_mode: "Markdown" });
+  };
+
+  bot.command(["coords", "loc", "players"], handleCoords);
+  bot.callbackQuery("loc_players", handleCoords);
 
   // SOS Panic Alert
   bot.callbackQuery("sos", async (ctx) => {
