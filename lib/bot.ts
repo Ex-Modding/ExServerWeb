@@ -41,14 +41,14 @@ export function isUserAuthorized(
 
 export function buildMainMenuKeyboard(): InlineKeyboard {
   const webAppUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "https://fome-web.vercel.app";
+    process.env.NEXT_PUBLIC_APP_URL || "https://ex-server-web.vercel.app";
 
   return new InlineKeyboard()
     .text("🟢 Включить сервер", "server_start")
     .text("🔴 Выключить сервер", "server_stop")
     .row()
     .text("📊 Статус сервера", "server_status")
-    .webApp("🗺️ Открыть 3D Карту", webAppUrl)
+    .url("🗺️ Открыть 3D Карту", webAppUrl)
     .row()
     .text("🤖 АФК Бота (Steve)", "afk_spawn")
     .text("❌ Убрать АФК", "afk_kill")
