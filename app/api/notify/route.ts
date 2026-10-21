@@ -8,13 +8,17 @@ interface NotifyPayload {
   event: "server_started" | "server_stopping" | string;
   secret?: string;
   message?: string;
+  topicId?: number;
 }
 
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as NotifyPayload;
-    const headerSecret = req.headers.get("x-notify-secret") || req.headers.get("x-telegram-bot-api-secret-token");
-    const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET || "fome_secret_webhook_2026";
+    const headerSecret =
+      req.headers.get("x-notify-secret") ||
+      req.headers.get("x-telegram-bot-api-secret-token");
+    const configuredSecret =
+      process.env.TELEGRAM_WEBHOOK_SECRET || "fome_secret_webhook_2026";
 
     // Validate secret token
     if (body.secret !== configuredSecret && headerSecret !== configuredSecret) {
@@ -22,7 +26,6 @@ export async function POST(req: Request) {
     }
 
     const groupChatId = process.env.TELEGRAM_GROUP_CHAT_ID || "-1004436845383";
-    const topicGeneral = Number(process.env.TELEGRAM_TOPIC_GENERAL || "1");
     const webAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://ex-server-web.vercel.app";
     const botUsername = "fdihjdfhjfdjhfdjh_bot";
 
@@ -45,12 +48,23 @@ export async function POST(req: Request) {
       notificationText = body.message || `ℹ️ Оповещение от сервера: ${body.event}`;
     }
 
-    // Send to supergroup General topic
-    await bot.api.sendMessage(groupChatId, notificationText, {
-      message_thread_id: topicGeneral,
-      parse_mode: "Markdown",
-      reply_markup: keyboard,
-    });
+    // Determine thread ID: News topic (4) or General (undefined)
+    const rawTopic = body.topicId ?? (process.env.TELEGRAM_NOTIFY_TOPIC ? Number(process.env.TELEGRAM_NOTIFY_TOPIC) : undefined);
+    const threadId = rawTopic && rawTopic !== 1 ? rawTopic : undefined;
+
+    try {
+      await bot.api.sendMessage(groupChatId, notificationText, {
+        message_thread_id: threadId,
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      });
+    } catch {
+      // Fallback: send to general channel without message_thread_id
+      await bot.api.sendMessage(groupChatId, notificationText, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      });
+    }
 
     return NextResponse.json({ ok: true, delivered: true });
   } catch (err) {
