@@ -69,7 +69,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, delivered: true });
   } catch (err) {
     console.error("[Notify Error]", err);
-    return NextResponse.json({ ok: false, error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
   }
 }
 
