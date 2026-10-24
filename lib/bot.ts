@@ -64,7 +64,9 @@ export function buildMainMenuKeyboard(): InlineKeyboard {
     .text("📍 Координаты игроков", "loc_players")
     .text("🤖 АФК Бота (Steve)", "afk_spawn")
     .row()
+    .text("🧭 АФК → локация", "afk_goto")
     .text("❌ Убрать АФК", "afk_kill")
+    .row()
     .text("🆘 Сигнал SOS", "sos");
 }
 
