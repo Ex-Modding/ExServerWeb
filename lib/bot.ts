@@ -218,6 +218,24 @@ export function setupBot(bot: Bot) {
   bot.command("afk_spawn", handleSpawnBot);
   bot.callbackQuery("afk_spawn", handleSpawnBot);
 
+  // Send the AFK bot to a random location from the /location-add landmark list
+  const handleAfkGoto = async (ctx: Context) => {
+    if (ctx.callbackQuery) {
+      await ctx.answerCallbackQuery({ text: "Телепортирую АФК-бота..." }).catch(() => {});
+    }
+    const res = await executeCommand("afk random");
+    if (res.success) {
+      await ctx.reply("🧭 Бот *Steve* отправлен к случайной метке из списка `/location-add`.", {
+        parse_mode: "Markdown",
+      });
+    } else {
+      await ctx.reply(`⚠️ Не удалось отправить бота: ${res.message || "сервер выключен?"}`);
+    }
+  };
+
+  bot.command("afk_goto", handleAfkGoto);
+  bot.callbackQuery("afk_goto", handleAfkGoto);
+
   const handleKillBot = async (ctx: Context) => {
     if (ctx.callbackQuery) {
       await ctx.answerCallbackQuery({ text: "Убираю АФК-бота..." }).catch(() => {});
