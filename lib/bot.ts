@@ -1,6 +1,7 @@
 import { Bot, InlineKeyboard, Keyboard, Context } from "grammy";
 import { formatPlayerCoordsText, getServerTelemetry } from "./radarStore";
 import {
+  executeCommand,
   fetchServerStatus,
   startServer,
   stopServer,
